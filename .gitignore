@@ -1,0 +1,41 @@
+# Secrets
+.env
+
+# Data (large / downloaded)
+data/raw/
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+
+# uv
+uv.lock.bak
+
+# mypy
+.mypy_cache/
+
+# pytest
+.pytest_cache/
+
+# ruff
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Results (generated; commit selectively)
+results/*.png
+results/*.csv
+results/*.jsonl
