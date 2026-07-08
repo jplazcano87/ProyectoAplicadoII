@@ -1,8 +1,9 @@
 # Secrets
 .env
 
-# Data (large / downloaded)
+# Data (large / downloaded / generated)
 data/raw/
+data/processed/*.jsonl
 .cache/
 
 # Python

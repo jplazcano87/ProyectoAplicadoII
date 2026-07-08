@@ -6,7 +6,6 @@ install:
 
 ingest:
 	uv run python -m normarag.corpus.download
-	uv run python -m normarag.corpus.parse
 	uv run python -m normarag.corpus.chunk
 
 index:
