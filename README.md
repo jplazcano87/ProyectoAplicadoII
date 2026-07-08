@@ -34,6 +34,27 @@ make demo                  # levanta Qdrant + API + UI
 
 La UI queda disponible en `http://localhost:8501` y la API en `http://localhost:8000`.
 
+> `make index` y las consultas requieren `OPENAI_API_KEY` en `.env` (embeddings + generador).
+
+### Consultar la API
+
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "¿Con cuánta anticipación debe avisarse el cierre de una oficina?", "top_k": 6}'
+```
+
+Respuesta (contrato de §9 + fuentes recuperadas):
+
+```json
+{
+  "answer": "…",
+  "citations": [{"chapter": "1-8", "numeral": "2"}],
+  "abstained": false,
+  "sources": [{"chapter_code": "1-8", "numeral": "2", "score": 0.83, "text": "…"}]
+}
+```
+
 ### Evaluación (A/B/C/D)
 
 ```bash

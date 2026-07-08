@@ -25,6 +25,7 @@ services:
         condition: service_healthy
     volumes:
       - ./src:/app/src
+      - ./config:/app/config
       - ./data:/app/data
 
   ui:
@@ -40,6 +41,7 @@ services:
       - api
     volumes:
       - ./src:/app/src
+      - ./config:/app/config
 
 volumes:
   qdrant_data:
