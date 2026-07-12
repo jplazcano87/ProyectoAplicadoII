@@ -61,6 +61,7 @@ def evaluate_ragas(
             context_recall,
             faithfulness,
         )
+        from ragas.run_config import RunConfig
     except Exception as exc:  # pragma: no cover - depends on optional stack
         warnings.warn(f"RAGAS unavailable ({exc}); skipping RAGAS metrics.", stacklevel=2)
         return None
@@ -83,16 +84,38 @@ def evaluate_ragas(
         embedder = LangchainEmbeddingsWrapper(
             OpenAIEmbeddings(model=embedding_model, api_key=api_key)  # type: ignore[arg-type]
         )
+        # Prioritize completing over speed: long per-op timeout, gentle
+        # concurrency and generous retries so slow judge calls don't turn into
+        # NaN via TimeoutError.
+        run_config = RunConfig(
+            timeout=settings.ragas_timeout_s,
+            max_workers=settings.ragas_max_workers,
+            max_retries=settings.ragas_max_retries,
+            max_wait=settings.ragas_max_wait_s,
+        )
+        print(
+            f"    RAGAS: judging {len(rows)} rows x 4 metrics "
+            f"(judge={judge_model}, timeout={settings.ragas_timeout_s}s, "
+            f"workers={settings.ragas_max_workers})...",
+            flush=True,
+        )
         result = evaluate(
             dataset=dataset,
             metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
             llm=judge,
             embeddings=embedder,
+            run_config=run_config,
         )
         frame = result.to_pandas()
         out: list[dict] = []
         for _, row in frame.iterrows():
             out.append({col: _to_float(row.get(col)) for col in RAGAS_COLUMNS})
+        computed = sum(1 for r in out for v in r.values() if v is not None)
+        print(
+            f"    RAGAS: done ({computed}/{len(out) * 4} metric values computed; "
+            "the rest are NaN/None).",
+            flush=True,
+        )
         return out
     except Exception as exc:  # pragma: no cover - runtime/network errors
         warnings.warn(f"RAGAS evaluation failed ({exc}); skipping RAGAS metrics.", stacklevel=2)

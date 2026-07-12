@@ -226,9 +226,17 @@ def _split_long_text(text: str) -> list[str]:
 
 def chunk_chapter(chapter: ParsedChapter) -> list[Chunk]:
     chunks: list[Chunk] = []
+    # A (título, numeral) can recur within a chapter (e.g. a numbered glossary
+    # list reusing "1", "2", … under the same título). Keep a running index per
+    # (título, numeral) so every chunk_id stays globally unique — the plain
+    # sub-chunk index resets per section and would otherwise collide.
+    seen: dict[tuple[str, str], int] = {}
     for section in _split_into_sections(chapter):
         text = _clean_text(section.lines)
-        for idx, piece in enumerate(_split_long_text(text)):
+        for piece in _split_long_text(text):
+            key = (section.title_section, section.numeral)
+            idx = seen.get(key, 0)
+            seen[key] = idx + 1
             chunks.append(
                 Chunk(
                     chunk_id=(

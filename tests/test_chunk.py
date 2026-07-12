@@ -158,6 +158,23 @@ def test_chunk_no_boilerplate_or_midword_cuts() -> None:
     assert "información" in joined
 
 
+def test_chunk_ids_are_unique_when_numeral_reoccurs() -> None:
+    # Numeral "1" appears twice under título III (a section, then a glossary
+    # list item); their chunk_ids must not collide.
+    text = (
+        "III. DEFINICIONES\n"
+        "1. Primera acepcion.\nTexto de la primera.\n"
+        "2. Segunda acepcion.\nTexto de la segunda.\n"
+        "1. Reuso del numeral uno en una lista.\nOtro texto distinto.\n"
+    )
+    chunks = chunk_chapter(_chapter(text))
+    ids = [c.chunk_id for c in chunks]
+    assert len(ids) == len(set(ids)), f"duplicate chunk_ids: {ids}"
+    ones = [c for c in chunks if c.numeral == "1"]
+    assert len(ones) == 2
+    assert {c.chunk_id for c in ones} == {"9-9::III::1::0", "9-9::III::1::1"}
+
+
 def test_long_numeral_is_subdivided_with_overlap() -> None:
     # Build a numeral whose body far exceeds MAX_TOKENS.
     body = " ".join(f"palabra{i}" for i in range(3000))

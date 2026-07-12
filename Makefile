@@ -1,5 +1,9 @@
 .PHONY: install ingest index demo eval validate-golden test lint
 
+# Dataset used by `make eval` / `make validate-golden`. Override for the real
+# golden set, e.g.: make eval DATASET=data/golden/golden_dataset.jsonl
+DATASET ?= data/golden/seed.jsonl
+
 install:
 	uv sync --extra dev
 	uv run pre-commit install
@@ -15,12 +19,13 @@ demo:
 	docker compose up --build
 
 eval:
-	uv run python -m normarag.eval.runner --config baseline --dataset data/golden/seed.jsonl
-	uv run python -m normarag.eval.runner --config rag_naive --dataset data/golden/seed.jsonl
+	uv run python -m normarag.eval.runner --config baseline     --dataset $(DATASET)
+	uv run python -m normarag.eval.runner --config rag_naive     --dataset $(DATASET)
+	uv run python -m normarag.eval.runner --config rag_improved  --dataset $(DATASET) --max-workers 1
 	uv run python -m normarag.eval.report
 
 validate-golden:
-	uv run python scripts/validate_golden.py data/golden/seed.jsonl
+	uv run python scripts/validate_golden.py $(DATASET)
 
 test:
 	uv run pytest
