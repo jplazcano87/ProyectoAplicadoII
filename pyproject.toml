@@ -22,8 +22,14 @@ dependencies = [
     "qdrant-client[fastembed]>=1.9",
     # Orchestration
     "langgraph>=0.1",
-    # Evaluation
-    "ragas>=0.1",
+    # Evaluation. RAGAS + langchain are pinned to the 0.2/0.3 line: newer
+    # langchain-community (1.x) dropped modules that RAGAS still imports.
+    "ragas>=0.2,<0.3",
+    "langchain>=0.3,<0.4",
+    "langchain-core>=0.3,<0.4",
+    "langchain-community>=0.3,<0.4",
+    "langchain-openai>=0.2,<0.3",
+    "matplotlib>=3.8",
     # API
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",

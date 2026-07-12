@@ -25,6 +25,14 @@ SYSTEM_PROMPT = (
     "debes abstenerte."
 )
 
+BASELINE_SYSTEM_PROMPT = (
+    "Eres NormaRAG, un asistente sobre la normativa bancaria chilena (Recopilación "
+    "Actualizada de Normas, RAN, de la CMF). Respondes en español, de forma concisa. "
+    "NO dispones de contexto recuperado: responde solo con tu conocimiento previo y cita "
+    "el capítulo y numeral que creas correctos. Si no estás seguro de la norma, abstente "
+    "en lugar de inventar."
+)
+
 _OUTPUT_CONTRACT = (
     "Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional ni "
     "formato Markdown, con este esquema exacto:\n"
