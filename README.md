@@ -92,7 +92,7 @@ uv run python -m normarag.eval.report   # la tabla incluye todos los labels enco
 
 > Cohere (trial) limita rerank a ~10 req/min; el reranker aplica un throttle interno y reintentos. Corre C con `--max-workers 1`.
 
-> **Nota de honestidad experimental (seed set, n=12):** sobre las 12 semillas —fáciles— B ya alcanza citación perfecta (techo), así que C **no** la supera en citación/faithfulness a esta escala; sí mejora claramente `context_precision` (≈0.80 vs 0.50). La comparación A/B/C definitiva requiere el golden dataset real (60–80 Q&A). La latencia de C incluye el throttle de Cohere (~6.5 s/consulta), no es latencia neta.
+> **Nota de honestidad experimental (seed set, n=12):** sobre las 12 semillas —fáciles— B ya alcanza citación perfecta (techo), así que C la **empata** en citación (1.00) y queda algo por debajo en faithfulness (0.83 vs 1.00, ruido a esta escala); C **sí** mejora `context_precision` (~0.78 vs 0.69) y `answer_relevancy` (~0.66 vs 0.62). La comparación A/B/C definitiva requiere el golden dataset real (60–80 Q&A). La latencia de C incluye el throttle de Cohere (~6.5 s/consulta), no es latencia neta.
 
 Salidas en `results/`: `comparativa.csv`, `comparativa.md` y `comparativa.png` con las 4 métricas RAGAS (faithfulness, answer_relevancy, context_precision, context_recall) + las métricas de citación propias (validez, exact/chapter match P/R/F1) + abstención + latencia y costo.
 
