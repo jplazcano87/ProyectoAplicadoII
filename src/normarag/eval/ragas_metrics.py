@@ -91,7 +91,7 @@ def evaluate_ragas(
             timeout=settings.ragas_timeout_s,
             max_workers=settings.ragas_max_workers,
             max_retries=settings.ragas_max_retries,
-            max_wait=120,
+            max_wait=settings.ragas_max_wait_s,
         )
         print(
             f"    RAGAS: judging {len(rows)} rows x 4 metrics "

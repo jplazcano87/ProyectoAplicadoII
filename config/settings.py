@@ -17,10 +17,14 @@ class Settings(BaseSettings):
     judge_model: str = "gpt-4o"
     rerank_model: str = "rerank-multilingual-v3.0"
 
-    # RAGAS reliability: prioritize completing over speed (the judge can be slow).
+    # RAGAS reliability: prioritize completing over speed. The judge (gpt-4o) has
+    # a tokens-per-minute (TPM) cap, so serialize calls (workers=1) to spread
+    # tokens over time and retry with long waits to ride out 429s (TPM resets
+    # every ~60s). Slower, but the run completes instead of producing NaNs.
     ragas_timeout_s: int = 600  # per-operation timeout for the RAGAS judge
-    ragas_max_workers: int = 4  # judge concurrency (lower = fewer timeouts/limits)
-    ragas_max_retries: int = 4
+    ragas_max_workers: int = 1  # judge concurrency (1 = safest under TPM limits)
+    ragas_max_retries: int = 10  # attempts before giving up on a rate-limited call
+    ragas_max_wait_s: int = 90  # max backoff between retries (>= the 60s TPM window)
 
     # Qdrant
     qdrant_url: str = "http://localhost:6333"
