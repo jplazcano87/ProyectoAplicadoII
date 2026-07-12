@@ -73,7 +73,10 @@ class QdrantStore:
     ) -> None:
         self.collection = collection or settings.qdrant_collection
         self.embedder = embedder or OpenAIEmbeddingProvider()
-        self.client = client or QdrantClient(url=settings.qdrant_url)
+        self.client = client or QdrantClient(
+            url=settings.qdrant_url,
+            check_compatibility=settings.qdrant_check_compatibility,
+        )
         self._sparse_model: Any = None
 
     # --- sparse (BM25) embedding via fastembed --------------------------------

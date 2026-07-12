@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # Qdrant
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "normarag_ran"
+    # The pinned server image (v1.12) trails the client (1.18) by a few minors;
+    # our API usage is compatible, so skip the client's noisy version check.
+    qdrant_check_compatibility: bool = False
 
     # Retrieval
     top_k_dense: int = 20
