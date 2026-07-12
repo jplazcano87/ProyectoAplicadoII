@@ -96,13 +96,18 @@ def aggregate(rows: list[dict]) -> dict:
 
 
 def load_results(results_dir: Path = RESULTS_DIR) -> dict[str, list[dict]]:
+    """Load every results/<label>.jsonl, ordering the canonical A/B/C/D configs
+    first and any ablation labels after them (alphabetically)."""
+    labels = sorted(p.stem for p in results_dir.glob("*.jsonl"))
+    ordered = [c for c in CONFIG_ORDER if c in labels]
+    ordered += [c for c in labels if c not in CONFIG_ORDER]
+
     found: dict[str, list[dict]] = {}
-    for config in CONFIG_ORDER:
-        path = results_dir / f"{config}.jsonl"
-        if path.exists():
-            found[config] = [
-                json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line
-            ]
+    for label in ordered:
+        path = results_dir / f"{label}.jsonl"
+        found[label] = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line
+        ]
     return found
 
 

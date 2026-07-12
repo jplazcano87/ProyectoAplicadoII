@@ -70,6 +70,40 @@ def build_rag_prompt(question: str, context_chunks: list[dict]) -> str:
     return f"CONTEXTO:\n{context}\n\n" f"PREGUNTA:\n{question}\n\n" f"{_OUTPUT_CONTRACT}"
 
 
+CITATION_SYSTEM_PROMPT = (
+    "Eres NormaRAG, un asistente experto en la normativa bancaria chilena (Recopilación "
+    "Actualizada de Normas, RAN, de la CMF). Reglas ESTRICTAS e inviolables:\n"
+    "1. Responde ÚNICAMENTE con base en el CONTEXTO entregado. Está PROHIBIDO usar "
+    "conocimiento externo o suponer normas.\n"
+    "2. Toda afirmación debe estar respaldada por una cita (capítulo + numeral) tomada "
+    "textualmente de un fragmento del contexto.\n"
+    "3. Si el contexto NO contiene evidencia suficiente para responder, DEBES abstenerte: "
+    'responde exactamente "No puedo responder con la normativa disponible", con '
+    "abstained=true y citations=[]. NUNCA inventes una respuesta ni una cita.\n"
+    "4. Es preferible abstenerse a arriesgar una respuesta no sustentada."
+)
+
+_CITATION_CONTRACT = (
+    "Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional ni Markdown, "
+    "con este esquema exacto:\n"
+    '{"answer": "<respuesta en español, o \\"No puedo responder con la normativa '
+    'disponible\\" si te abstienes>", '
+    '"citations": [{"chapter": "<codigo_capitulo>", "numeral": "<numeral>"}], '
+    '"abstained": <true|false>}\n'
+    "Reglas de citación:\n"
+    "- En 'chapter' usa SOLO el código del capítulo, sin la palabra 'Capítulo' "
+    "(p. ej. chapter='1-13', numeral='2.1' para el encabezado 'Capítulo 1-13 · Numeral 2.1').\n"
+    "- No cites numerales que no aparezcan en el contexto.\n"
+    "- Si te abstienes: answer con el texto de abstención, abstained=true, citations=[]."
+)
+
+
+def build_citation_prompt(question: str, context_chunks: list[dict]) -> str:
+    """Strict citation+abstention prompt (config C when USE_CITATION_PROMPT)."""
+    context = format_context(context_chunks) if context_chunks else "(sin contexto recuperado)"
+    return f"CONTEXTO:\n{context}\n\nPREGUNTA:\n{question}\n\n{_CITATION_CONTRACT}"
+
+
 def build_baseline_prompt(question: str) -> str:
     """Build the prompt for the A baseline (LLM only, no retrieval)."""
     return (
@@ -81,6 +115,13 @@ def build_baseline_prompt(question: str) -> str:
 
 
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+# Models sometimes echo the "Capítulo" label into the chapter field; normalize to
+# the bare code (e.g. "Capítulo 1-8" -> "1-8") so citations compare correctly.
+_CHAPTER_PREFIX_RE = re.compile(r"^\s*(cap[ií]tulo|cap\.?)\s*", re.IGNORECASE)
+
+
+def _normalize_chapter(chapter: object) -> str:
+    return _CHAPTER_PREFIX_RE.sub("", str(chapter or "")).strip()
 
 
 def _coerce_citations(raw: object) -> list[dict]:
@@ -94,7 +135,9 @@ def _coerce_citations(raw: object) -> list[dict]:
         numeral = item.get("numeral")
         if chapter is None and numeral is None:
             continue
-        citations.append({"chapter": str(chapter or ""), "numeral": str(numeral or "")})
+        citations.append(
+            {"chapter": _normalize_chapter(chapter), "numeral": str(numeral or "").strip()}
+        )
     return citations
 
 

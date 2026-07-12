@@ -28,6 +28,21 @@ class FakeEmbedder(EmbeddingProvider):
         return self._dim
 
 
+class FakeSparse:
+    """Stand-in for fastembed BM25: returns fixed indices/values, no download."""
+
+    def embed(self, texts: list[str]):
+        return [SimpleNamespace(indices=_Arr([1, 2]), values=_Arr([0.5, 0.5])) for _ in texts]
+
+    def query_embed(self, text: str):
+        return iter([SimpleNamespace(indices=_Arr([1]), values=_Arr([1.0]))])
+
+
+class _Arr(list):
+    def tolist(self):  # mimic numpy .tolist()
+        return list(self)
+
+
 class FakeQdrantClient:
     """Records upserts and returns canned search hits."""
 
@@ -40,8 +55,12 @@ class FakeQdrantClient:
     def collection_exists(self, name: str) -> bool:
         return self._exists
 
-    def create_collection(self, collection_name: str, vectors_config) -> None:
-        self.created_with = {"name": collection_name, "size": vectors_config.size}
+    def create_collection(self, collection_name, vectors_config, sparse_vectors_config=None):
+        self.created_with = {
+            "name": collection_name,
+            "size": vectors_config["dense"].size,
+            "sparse": list(sparse_vectors_config or {}),
+        }
         self._exists = True
 
     def delete_collection(self, name: str) -> None:
@@ -50,7 +69,7 @@ class FakeQdrantClient:
     def upsert(self, collection_name: str, points: list) -> None:
         self.upserted.extend(points)
 
-    def query_points(self, collection_name, query, limit, with_payload):
+    def query_points(self, collection_name, query, limit, with_payload, using=None):
         return SimpleNamespace(points=self._hits[:limit])
 
 
@@ -81,18 +100,19 @@ def test_embedding_text_prefixes_structural_header() -> None:
     assert "cuerpo del numeral" in text
 
 
-def test_ensure_collection_creates_with_embedder_dim() -> None:
+def test_ensure_collection_creates_dense_and_sparse() -> None:
     client = FakeQdrantClient()
     embedder = FakeEmbedder(dim=7)
     store = QdrantStore(client=client, collection="c", embedder=embedder)
     store.ensure_collection()
-    assert client.created_with == {"name": "c", "size": 7}
+    assert client.created_with == {"name": "c", "size": 7, "sparse": ["sparse"]}
 
 
 def test_upsert_chunks_embeds_and_upserts_all() -> None:
     client = FakeQdrantClient()
     embedder = FakeEmbedder()
     store = QdrantStore(client=client, collection="c", embedder=embedder)
+    store._sparse_model = FakeSparse()  # avoid loading the real BM25 model
     chunks = [_chunk(f"1-1::I::1.{i}::0", f"texto {i}") for i in range(3)]
 
     n = store.upsert_chunks(chunks, batch_size=2)
@@ -114,18 +134,18 @@ def test_search_returns_payloads_with_score() -> None:
     client = FakeQdrantClient(hits=hits)
     store = QdrantStore(client=client, collection="c", embedder=FakeEmbedder())
 
-    results = store.search("plazo de informe", top_k=5)
+    results = store.search_dense("plazo de informe", top_k=5)
 
     assert [r["chunk_id"] for r in results] == ["1-1::I::1::0", "1-2::I::1::0"]
     assert results[0]["score"] == 0.9
 
 
-def test_retriever_delegates_to_store() -> None:
+def test_retriever_dense_delegates_to_store() -> None:
     class FakeStore:
         def __init__(self) -> None:
             self.calls: list = []
 
-        def search(self, query: str, top_k=None) -> list[dict]:
+        def search_dense(self, query: str, top_k=None) -> list[dict]:
             self.calls.append((query, top_k))
             return [{"chunk_id": "x", "score": 1.0}]
 
@@ -135,3 +155,18 @@ def test_retriever_delegates_to_store() -> None:
 
     assert out == [{"chunk_id": "x", "score": 1.0}]
     assert store.calls == [("¿cuál es el plazo?", 3)]
+
+
+def test_retriever_hybrid_fuses_dense_and_sparse() -> None:
+    class FakeStore:
+        def search_dense(self, query: str, top_k=None) -> list[dict]:
+            return [{"chunk_id": "a", "score": 0.9}, {"chunk_id": "b", "score": 0.8}]
+
+        def search_sparse(self, query: str, top_k=None) -> list[dict]:
+            return [{"chunk_id": "b", "score": 2.0}, {"chunk_id": "c", "score": 1.0}]
+
+    retriever = Retriever(store=FakeStore())  # type: ignore[arg-type]
+    out = retriever.retrieve("q", use_hybrid=True)
+    ids = {c["chunk_id"] for c in out}
+    assert ids == {"a", "b", "c"}  # fused + deduped
+    assert out[0]["chunk_id"] == "b"  # appears in both -> highest RRF

@@ -15,8 +15,9 @@ demo:
 	docker compose up --build
 
 eval:
-	uv run python -m normarag.eval.runner --config baseline --dataset data/golden/seed.jsonl
-	uv run python -m normarag.eval.runner --config rag_naive --dataset data/golden/seed.jsonl
+	uv run python -m normarag.eval.runner --config baseline     --dataset data/golden/seed.jsonl
+	uv run python -m normarag.eval.runner --config rag_naive     --dataset data/golden/seed.jsonl
+	uv run python -m normarag.eval.runner --config rag_improved  --dataset data/golden/seed.jsonl --max-workers 2
 	uv run python -m normarag.eval.report
 
 validate-golden:

@@ -29,11 +29,21 @@ RESULTS_DIR = Path("results")
 CACHE_DIR = Path(".cache/eval")
 
 Generator = Callable[[str], dict]
-CONFIGS = ("baseline", "rag_naive")
+CONFIGS = ("baseline", "rag_naive", "rag_improved")
 
 
-def build_generator(config_name: str) -> Generator:
-    """Construct the real (OpenAI/Qdrant-backed) generator for a config."""
+def build_generator(
+    config_name: str,
+    *,
+    use_hybrid: bool | None = None,
+    use_rerank: bool | None = None,
+    use_citation_prompt: bool | None = None,
+) -> Generator:
+    """Construct the real (OpenAI/Qdrant/Cohere-backed) generator for a config.
+
+    For rag_improved the three toggles override the settings defaults, so M5
+    ablations run from the CLI without new code.
+    """
     from normarag.generation.llm import OpenAIClient
 
     llm = OpenAIClient()
@@ -47,15 +57,35 @@ def build_generator(config_name: str) -> Generator:
 
         retriever = Retriever()
         return lambda q: run_rag_naive(q, retriever=retriever, llm=llm)
+    if config_name == "rag_improved":
+        from normarag.pipeline.rag_improved import run_rag_improved
+        from normarag.retrieval.rerank import CohereReranker
+        from normarag.retrieval.retriever import Retriever
+
+        uh = settings.use_hybrid if use_hybrid is None else use_hybrid
+        ur = settings.use_rerank if use_rerank is None else use_rerank
+        uc = settings.use_citation_prompt if use_citation_prompt is None else use_citation_prompt
+        retriever = Retriever()
+        reranker = CohereReranker() if ur else None
+        return lambda q: run_rag_improved(
+            q,
+            retriever=retriever,
+            reranker=reranker,
+            llm=llm,
+            use_hybrid=uh,
+            use_rerank=ur,
+            use_citation_prompt=uc,
+        )
     raise ValueError(f"Unknown config '{config_name}'. Choices: {CONFIGS}")
 
 
-def _cache_key(config_name: str, question: str) -> str:
+def _cache_key(config_name: str, question: str, variant: dict | None = None) -> str:
     payload = json.dumps(
         {
             "config": config_name,
             "generator_model": settings.generator_model,
             "top_k": settings.top_k_dense,
+            "variant": variant or {},
             "question": question,
         },
         sort_keys=True,
@@ -64,8 +94,15 @@ def _cache_key(config_name: str, question: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _generate_one(config_name: str, question: str, generate: Generator, use_cache: bool) -> dict:
-    cache_path = CACHE_DIR / config_name / f"{_cache_key(config_name, question)}.json"
+def _generate_one(
+    label: str,
+    config_name: str,
+    question: str,
+    generate: Generator,
+    use_cache: bool,
+    variant: dict | None = None,
+) -> dict:
+    cache_path = CACHE_DIR / label / f"{_cache_key(config_name, question, variant)}.json"
     if use_cache and cache_path.exists():
         cached: dict = json.loads(cache_path.read_text(encoding="utf-8"))
         return cached
@@ -82,6 +119,8 @@ def _trim_context(chunk: dict) -> dict:
         "chapter_code": chunk.get("chapter_code"),
         "numeral": chunk.get("numeral"),
         "score": chunk.get("score"),
+        "rrf_score": chunk.get("rrf_score"),
+        "rerank_score": chunk.get("rerank_score"),
         "text": chunk.get("text"),
     }
 
@@ -130,38 +169,46 @@ def run_config(
     dataset_path: str | Path,
     *,
     generate: Generator | None = None,
+    label: str | None = None,
+    variant: dict | None = None,
     use_cache: bool = True,
     max_workers: int = 4,
     skip_ragas: bool = False,
     chunks_path: Path = CHUNKS_PATH,
     results_dir: Path = RESULTS_DIR,
 ) -> list[dict]:
+    """Run a config (optionally an ablation `variant`) over the golden set.
+
+    `label` names the output file / cache namespace (defaults to config_name),
+    so ablations of rag_improved can coexist as results/<label>.jsonl.
+    """
+    label = label or config_name
     examples = load_golden(dataset_path)
     known = known_citation_keys(load_chunks(chunks_path)) if Path(chunks_path).exists() else set()
-    generate = generate or build_generator(config_name)
+    generate = generate or build_generator(config_name, **(variant or {}))
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         outputs = list(
             pool.map(
-                lambda ex: _generate_one(config_name, ex.question, generate, use_cache),
+                lambda ex: _generate_one(
+                    label, config_name, ex.question, generate, use_cache, variant
+                ),
                 examples,
             )
         )
 
-    rows = [_build_row(config_name, ex, out, known) for ex, out in zip(examples, outputs)]
+    rows = [_build_row(label, ex, out, known) for ex, out in zip(examples, outputs)]
     if not skip_ragas:
         _attach_ragas(rows, examples)
 
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / f"{config_name}.jsonl"
+    out_path = results_dir / f"{label}.jsonl"
     with out_path.open("w", encoding="utf-8") as fh:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     total_cost = sum(r["cost_usd"] or 0.0 for r in rows)
-    print(
-        f"[{config_name}] {len(rows)} questions -> {out_path} " f"(approx cost ${total_cost:.4f})"
-    )
+    print(f"[{label}] {len(rows)} questions -> {out_path} (approx cost ${total_cost:.4f})")
     return rows
 
 
@@ -169,14 +216,29 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run an eval config over the golden set.")
     parser.add_argument("--config", required=True, choices=CONFIGS)
     parser.add_argument("--dataset", default="data/golden/seed.jsonl")
+    parser.add_argument("--label", default=None, help="Output/cache name (default: config).")
     parser.add_argument("--no-cache", action="store_true", help="Ignore the response cache.")
     parser.add_argument("--max-workers", type=int, default=4)
     parser.add_argument("--skip-ragas", action="store_true", help="Skip RAGAS metrics.")
+    # Ablation toggles for rag_improved (unset -> settings default).
+    parser.add_argument("--hybrid", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--rerank", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--citation-prompt", action=argparse.BooleanOptionalAction, default=None)
     args = parser.parse_args()
+
+    variant: dict = {}
+    if args.hybrid is not None:
+        variant["use_hybrid"] = args.hybrid
+    if args.rerank is not None:
+        variant["use_rerank"] = args.rerank
+    if args.citation_prompt is not None:
+        variant["use_citation_prompt"] = args.citation_prompt
 
     run_config(
         args.config,
         args.dataset,
+        label=args.label,
+        variant=variant or None,
         use_cache=not args.no_cache,
         max_workers=args.max_workers,
         skip_ragas=args.skip_ragas,

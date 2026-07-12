@@ -1,7 +1,8 @@
-"""Streamlit demo UI for NormaRAG (v0.1).
+"""Streamlit demo UI for NormaRAG.
 
-Sends the question to the API's /query endpoint and renders the answer,
-citations and the retrieved sources.
+Lets you pick a configuration (A/B/C) and compare answers live. Shows the
+retrieved fragments with their chapter/numeral, the dense/RRF score and, when
+config C reranks, the reranker score.
 """
 
 from __future__ import annotations
@@ -13,6 +14,12 @@ import streamlit as st
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
+CONFIG_LABELS = {
+    "A · baseline (LLM solo)": "A",
+    "B · RAG naive (denso)": "B",
+    "C · RAG mejorado (híbrido + rerank)": "C",
+}
+
 st.set_page_config(page_title="NormaRAG", page_icon="⚖️")
 st.title("⚖️ NormaRAG")
 st.caption(
@@ -20,18 +27,24 @@ st.caption(
     "Responde citando capítulo y numeral."
 )
 
+config_label = st.sidebar.radio("Configuración", list(CONFIG_LABELS), index=2)
+config = CONFIG_LABELS[config_label]
+top_k = st.sidebar.slider(
+    "Fragmentos recuperados (top-k) · solo exploración", 1, 30, 6, disabled=(config == "A")
+)
+st.sidebar.caption("La evaluación usa el top-k fijo de la config, no este slider.")
+
 question = st.text_input(
     "Tu pregunta",
     placeholder="¿Qué plazo tiene un banco para informar el cierre de una oficina?",
 )
-top_k = st.sidebar.slider("Fragmentos recuperados (top-k)", 1, 30, 6)
 
 if st.button("Consultar", type="primary") and question.strip():
     with st.spinner("Consultando la normativa…"):
         try:
             resp = httpx.post(
                 f"{API_URL}/query",
-                json={"question": question, "top_k": top_k},
+                json={"question": question, "config": config, "top_k": top_k},
                 timeout=120,
             )
             resp.raise_for_status()
@@ -39,6 +52,13 @@ if st.button("Consultar", type="primary") and question.strip():
         except httpx.HTTPError as exc:
             st.error(f"Error al consultar la API ({API_URL}): {exc}")
             st.stop()
+
+    cols = st.columns(3)
+    cols[0].metric("Configuración", data.get("config"))
+    if data.get("latency_ms") is not None:
+        cols[1].metric("Latencia", f"{data['latency_ms'] / 1000:.2f} s")
+    if data.get("cost_usd") is not None:
+        cols[2].metric("Costo", f"${data['cost_usd']:.5f}")
 
     if data.get("abstained"):
         st.warning("El sistema se abstuvo: no hay evidencia suficiente en el corpus.")
@@ -62,8 +82,13 @@ if st.button("Consultar", type="primary") and question.strip():
                 f"Numeral {s.get('numeral')} — {s.get('chapter_title', '')}"
             )
             with st.expander(label):
+                scores = []
+                if s.get("rerank_score") is not None:
+                    scores.append(f"rerank: {s['rerank_score']:.4f}")
                 if s.get("score") is not None:
-                    st.caption(f"score: {s['score']:.4f}")
+                    scores.append(f"retrieval: {s['score']:.4f}")
+                if scores:
+                    st.caption(" · ".join(scores))
                 st.write(s.get("text", ""))
                 if s.get("source_url"):
                     st.markdown(f"[PDF fuente]({s['source_url']})")
