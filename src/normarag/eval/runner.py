@@ -99,17 +99,20 @@ def _generate_one(
     config_name: str,
     question: str,
     generate: Generator,
-    use_cache: bool,
+    read_cache: bool,
     variant: dict | None = None,
+    cache_dir: Path = CACHE_DIR,
 ) -> dict:
-    cache_path = CACHE_DIR / label / f"{_cache_key(config_name, question, variant)}.json"
-    if use_cache and cache_path.exists():
+    """Generate one answer. `read_cache` gates *reading* the cache; the result is
+    always written back, so `--no-cache` refreshes stale entries (e.g. after a
+    prompt/parser change) instead of leaving them behind."""
+    cache_path = cache_dir / label / f"{_cache_key(config_name, question, variant)}.json"
+    if read_cache and cache_path.exists():
         cached: dict = json.loads(cache_path.read_text(encoding="utf-8"))
         return cached
     output = generate(question)
-    if use_cache:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(json.dumps(output, ensure_ascii=False), encoding="utf-8")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(output, ensure_ascii=False), encoding="utf-8")
     return output
 
 
@@ -176,11 +179,13 @@ def run_config(
     skip_ragas: bool = False,
     chunks_path: Path = CHUNKS_PATH,
     results_dir: Path = RESULTS_DIR,
+    cache_dir: Path = CACHE_DIR,
 ) -> list[dict]:
     """Run a config (optionally an ablation `variant`) over the golden set.
 
     `label` names the output file / cache namespace (defaults to config_name),
     so ablations of rag_improved can coexist as results/<label>.jsonl.
+    `use_cache=False` regenerates and refreshes the cache (does not just bypass).
     """
     label = label or config_name
     examples = load_golden(dataset_path)
@@ -198,7 +203,7 @@ def run_config(
         outputs = list(
             pool.map(
                 lambda ex: _generate_one(
-                    label, config_name, ex.question, generate, use_cache, variant
+                    label, config_name, ex.question, generate, use_cache, variant, cache_dir
                 ),
                 examples,
             )

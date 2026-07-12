@@ -135,6 +135,7 @@ def test_run_config_writes_rows_and_metrics(tmp_path: Path) -> None:
         skip_ragas=True,
         chunks_path=chunks,
         results_dir=results,
+        cache_dir=tmp_path / "cache",
         max_workers=2,
     )
 
@@ -164,6 +165,7 @@ def test_report_aggregate_and_generate(tmp_path: Path) -> None:
         skip_ragas=True,
         chunks_path=chunks,
         results_dir=results,
+        cache_dir=tmp_path / "cache",
     )
     agg = aggregate(rows)
     assert agg["citation_validity"] == 1.0  # both rows valid (one empty=vacuous)
