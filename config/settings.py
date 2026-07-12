@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     # Models
     embedding_model: str = "text-embedding-3-large"
+    embedding_dim: int = 3072  # text-embedding-3-large native dimension
     generator_model: str = "gpt-4o-mini"
     judge_model: str = "gpt-4o"
     rerank_model: str = "rerank-multilingual-v3.0"
