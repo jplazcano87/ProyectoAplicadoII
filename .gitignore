@@ -3,6 +3,8 @@
 
 # Data (large / downloaded / generated)
 data/raw/
+data/raw*
+data/*.zip
 data/processed/*.jsonl
 .cache/
 
@@ -40,3 +42,4 @@ Thumbs.db
 results/*.png
 results/*.csv
 results/*.jsonl
+results/*.md

@@ -57,9 +57,27 @@ Respuesta (contrato de §9 + fuentes recuperadas):
 
 ### Evaluación (A/B/C/D)
 
+> Requiere **Python 3.11** (fijado en `.python-version`; RAGAS no funciona en 3.14). `make eval` necesita `OPENAI_API_KEY` (generación + embeddings) y, para RAGAS, `JUDGE_MODEL` sobre OpenAI.
+
 ```bash
-make eval   # corre pipelines sobre golden set -> results/
+make eval             # corre A (baseline) y B (rag_naive) sobre el seed set -> results/
+make validate-golden  # valida el schema del golden y que las referencias existan en el corpus
 ```
+
+Salidas en `results/`: `comparativa.csv`, `comparativa.md` y `comparativa.png` con las 4 métricas RAGAS (faithfulness, answer_relevancy, context_precision, context_recall) + las métricas de citación propias (validez, exact/chapter match P/R/F1) + abstención + latencia y costo.
+
+**Correr sobre tu propio golden dataset** (una vez construido `data/golden/golden_dataset.jsonl`):
+
+```bash
+uv run python scripts/validate_golden.py data/golden/golden_dataset.jsonl
+uv run python -m normarag.eval.runner --config baseline  --dataset data/golden/golden_dataset.jsonl
+uv run python -m normarag.eval.runner --config rag_naive --dataset data/golden/golden_dataset.jsonl
+uv run python -m normarag.eval.report
+```
+
+Las respuestas se cachean por hash de `(config, modelo, pregunta)` en `.cache/eval/`, así que re-correr no re-paga la generación. Usa `--no-cache` para forzar y `--skip-ragas` para omitir el juez.
+
+El **golden dataset real (60–80 Q&A)** es trabajo humano (requiere criterio normativo y validar cada referencia). El repo incluye `data/golden/seed.jsonl` (12 ejemplos semilla derivados de chunks reales) solo para ejercitar el harness.
 
 ### Tests y linting
 

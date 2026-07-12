@@ -1,4 +1,4 @@
-.PHONY: install ingest index demo eval test lint
+.PHONY: install ingest index demo eval validate-golden test lint
 
 install:
 	uv sync --extra dev
@@ -15,7 +15,12 @@ demo:
 	docker compose up --build
 
 eval:
-	uv run python -m normarag.eval.runner
+	uv run python -m normarag.eval.runner --config baseline --dataset data/golden/seed.jsonl
+	uv run python -m normarag.eval.runner --config rag_naive --dataset data/golden/seed.jsonl
+	uv run python -m normarag.eval.report
+
+validate-golden:
+	uv run python scripts/validate_golden.py data/golden/seed.jsonl
 
 test:
 	uv run pytest

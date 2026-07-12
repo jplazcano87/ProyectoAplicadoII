@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from normarag.generation.llm import LLMResult
 from normarag.generation.prompt import (
     build_rag_prompt,
     format_context,
     parse_structured_output,
 )
+from normarag.pipeline.baseline import run_baseline
 from normarag.pipeline.rag_naive import run_rag_naive
 
 
@@ -96,12 +98,12 @@ class FakeLLM:
         self.reply = reply
         self.prompts: list = []
 
-    def complete(self, prompt: str, system=None) -> str:
+    def complete(self, prompt: str, system=None) -> LLMResult:
         self.prompts.append((prompt, system))
-        return self.reply
+        return LLMResult(text=self.reply, prompt_tokens=10, completion_tokens=5, cost_usd=0.0001)
 
 
-def test_run_rag_naive_orchestrates_and_attaches_sources() -> None:
+def test_run_rag_naive_uniform_contract_with_contexts() -> None:
     retriever = FakeRetriever(_ctx())
     llm = FakeLLM(
         '{"answer": "Con 90 días.", "citations": [{"chapter": "1-8", "numeral": "2"}], '
@@ -114,10 +116,12 @@ def test_run_rag_naive_orchestrates_and_attaches_sources() -> None:
     assert result["answer"] == "Con 90 días."
     assert result["citations"] == [{"chapter": "1-8", "numeral": "2"}]
     assert result["abstained"] is False
-    # Sources come from the retriever and are trimmed to display fields.
-    assert len(result["sources"]) == 1
-    assert result["sources"][0]["chapter_code"] == "1-8"
-    assert result["sources"][0]["score"] == 0.88
+    # Uniform contract: contexts (full retrieved chunks) + latency + cost.
+    assert len(result["contexts"]) == 1
+    assert result["contexts"][0]["chapter_code"] == "1-8"
+    assert result["contexts"][0]["score"] == 0.88
+    assert result["latency_ms"] >= 0
+    assert result["cost_usd"] > 0  # generation + query-embedding cost
     # Retrieval used the requested top_k; the LLM saw the system prompt.
     assert retriever.calls == [("¿Con cuánta anticipación?", 4)]
     assert llm.prompts[0][1] is not None
@@ -128,4 +132,13 @@ def test_run_rag_naive_propagates_abstention() -> None:
     llm = FakeLLM('{"answer": "", "citations": [], "abstained": true}')
     result = run_rag_naive("pregunta sin evidencia", retriever=retriever, llm=llm)  # type: ignore[arg-type]
     assert result["abstained"] is True
-    assert result["sources"] == []
+    assert result["contexts"] == []
+
+
+def test_run_baseline_has_no_contexts() -> None:
+    llm = FakeLLM('{"answer": "Respuesta directa.", "citations": [], "abstained": false}')
+    result = run_baseline("¿Pregunta general?", llm=llm)  # type: ignore[arg-type]
+    assert result["answer"] == "Respuesta directa."
+    assert result["contexts"] == []
+    assert result["cost_usd"] > 0
+    assert "latency_ms" in result

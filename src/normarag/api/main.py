@@ -43,9 +43,27 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+def _source(chunk: dict) -> Source:
+    return Source(
+        chunk_id=chunk.get("chunk_id"),
+        chapter_code=chunk.get("chapter_code"),
+        chapter_title=chunk.get("chapter_title"),
+        title_section=chunk.get("title_section"),
+        numeral=chunk.get("numeral"),
+        score=chunk.get("score"),
+        source_url=chunk.get("source_url"),
+        text=chunk.get("text"),
+    )
+
+
 @app.post("/query", response_model=QueryResponse)
 def query(payload: QueryRequest) -> QueryResponse:
     if not payload.question.strip():
         raise HTTPException(status_code=422, detail="question must not be empty")
     result = run_rag_naive(payload.question, top_k=payload.top_k)
-    return QueryResponse(**result)
+    return QueryResponse(
+        answer=result["answer"],
+        citations=[Citation(**c) for c in result["citations"]],
+        abstained=result["abstained"],
+        sources=[_source(c) for c in result["contexts"]],
+    )
