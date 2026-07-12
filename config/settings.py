@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     judge_model: str = "gpt-4o"
     rerank_model: str = "rerank-multilingual-v3.0"
 
+    # RAGAS reliability: prioritize completing over speed (the judge can be slow).
+    ragas_timeout_s: int = 600  # per-operation timeout for the RAGAS judge
+    ragas_max_workers: int = 4  # judge concurrency (lower = fewer timeouts/limits)
+    ragas_max_retries: int = 4
+
     # Qdrant
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "normarag_ran"

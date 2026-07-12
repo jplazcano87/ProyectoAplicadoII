@@ -187,6 +187,13 @@ def run_config(
     known = known_citation_keys(load_chunks(chunks_path)) if Path(chunks_path).exists() else set()
     generate = generate or build_generator(config_name, **(variant or {}))
 
+    print(
+        f"[{label}] config={config_name} variant={variant or '{}'} | "
+        f"{len(examples)} questions | cache={'on' if use_cache else 'off'} | "
+        f"ragas={'off' if skip_ragas else 'on'} | workers={max_workers}",
+        flush=True,
+    )
+    print(f"[{label}] generating answers...", flush=True)
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         outputs = list(
             pool.map(
@@ -196,9 +203,11 @@ def run_config(
                 examples,
             )
         )
+    print(f"[{label}] generation done; scoring citation metrics...", flush=True)
 
     rows = [_build_row(label, ex, out, known) for ex, out in zip(examples, outputs)]
     if not skip_ragas:
+        print(f"[{label}] starting RAGAS (this is the slow step)...", flush=True)
         _attach_ragas(rows, examples)
 
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -208,7 +217,7 @@ def run_config(
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     total_cost = sum(r["cost_usd"] or 0.0 for r in rows)
-    print(f"[{label}] {len(rows)} questions -> {out_path} (approx cost ${total_cost:.4f})")
+    print(f"[{label}] DONE: {len(rows)} questions -> {out_path} (approx cost ${total_cost:.4f})\n")
     return rows
 
 

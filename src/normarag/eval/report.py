@@ -186,6 +186,11 @@ def generate_report(results_dir: Path = RESULTS_DIR) -> dict[str, dict]:
     if not results:
         print(f"No results found in {results_dir}/. Run `make eval` first.")
         return {}
+    print(
+        "Building report from: "
+        + ", ".join(f"{label} ({len(rows)} rows)" for label, rows in results.items()),
+        flush=True,
+    )
     aggs = {config: aggregate(rows) for config, rows in results.items()}
 
     results_dir.mkdir(parents=True, exist_ok=True)
