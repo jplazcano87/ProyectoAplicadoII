@@ -43,11 +43,14 @@ def run_rag_improved(
     use_hybrid: bool | None = None,
     use_rerank: bool | None = None,
     use_citation_prompt: bool | None = None,
-    top_k: int | None = None,
+    top_k_rerank: int | None = None,
 ) -> dict:
     use_hybrid = _resolve(use_hybrid, settings.use_hybrid)
     use_rerank = _resolve(use_rerank, settings.use_rerank)
     use_citation_prompt = _resolve(use_citation_prompt, settings.use_citation_prompt)
+    # Number of chunks kept as context (after rerank, or from the fused list).
+    # Overridable for the M5 top-k sweep; leaves everything else fixed.
+    top_k_rerank = top_k_rerank if top_k_rerank is not None else settings.top_k_rerank
 
     retriever = retriever or Retriever()
     llm = llm or OpenAIClient()
@@ -58,9 +61,9 @@ def run_rag_improved(
         # Retrieve a broad candidate pool, then narrow with the reranker.
         candidates = retriever.retrieve(question, use_hybrid=use_hybrid)
         if use_rerank and reranker is not None:
-            contexts = reranker.rerank(question, candidates, top_k=settings.top_k_rerank)
+            contexts = reranker.rerank(question, candidates, top_k=top_k_rerank)
         else:
-            contexts = candidates[: top_k or settings.top_k_rerank]
+            contexts = candidates[:top_k_rerank]
 
         if use_citation_prompt:
             prompt = build_citation_prompt(question, contexts)

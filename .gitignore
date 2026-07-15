@@ -43,3 +43,8 @@ results/*.png
 results/*.csv
 results/*.jsonl
 results/*.md
+results/*.json
+results/*.log
+results/main/
+results/ablations/
+results/topk/
