@@ -159,7 +159,7 @@ def _build_row(
     config_name: str, example: GoldenExample, output: dict, known: set[tuple[str, str]]
 ) -> dict:
     metrics = per_example_metrics(output, example, known)
-    return {
+    row = {
         "id": example.id,
         "config": config_name,
         "question": example.question,
@@ -176,6 +176,12 @@ def _build_row(
         "cost_usd": output.get("cost_usd"),
         **metrics,
     }
+    # Config D (agentic) extras, when present.
+    if "sub_questions" in output:
+        row["sub_questions"] = output["sub_questions"]
+    if output.get("rejected_citations"):
+        row["rejected_citations"] = output["rejected_citations"]
+    return row
 
 
 def _attach_ragas(rows: list[dict], examples: list[GoldenExample]) -> None:
@@ -265,6 +271,10 @@ def main() -> None:
     parser.add_argument("--hybrid", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--rerank", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--citation-prompt", action=argparse.BooleanOptionalAction, default=None)
+    # M6 C-v2 interventions.
+    parser.add_argument("--soft-abstention", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--exclude-preamble", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--top-k-rerank", type=int, default=None)
     args = parser.parse_args()
 
     variant: dict = {}
@@ -274,6 +284,12 @@ def main() -> None:
         variant["use_rerank"] = args.rerank
     if args.citation_prompt is not None:
         variant["use_citation_prompt"] = args.citation_prompt
+    if args.soft_abstention is not None:
+        variant["soft_abstention"] = args.soft_abstention
+    if args.exclude_preamble is not None:
+        variant["exclude_preamble"] = args.exclude_preamble
+    if args.top_k_rerank is not None:
+        variant["top_k_rerank"] = args.top_k_rerank
 
     run_config(
         args.config,
