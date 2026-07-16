@@ -38,11 +38,13 @@ def build_generator(
     use_hybrid: bool | None = None,
     use_rerank: bool | None = None,
     use_citation_prompt: bool | None = None,
+    top_k_rerank: int | None = None,
 ) -> Generator:
     """Construct the real (OpenAI/Qdrant/Cohere-backed) generator for a config.
 
-    For rag_improved the three toggles override the settings defaults, so M5
-    ablations run from the CLI without new code.
+    For rag_improved the three toggles and top_k_rerank override the settings
+    defaults, so M5 ablations and the top-k sweep run from the CLI without new
+    logic.
     """
     from normarag.generation.llm import OpenAIClient
 
@@ -75,6 +77,7 @@ def build_generator(
             use_hybrid=uh,
             use_rerank=ur,
             use_citation_prompt=uc,
+            top_k_rerank=top_k_rerank,
         )
     raise ValueError(f"Unknown config '{config_name}'. Choices: {CONFIGS}")
 
@@ -95,7 +98,6 @@ def _cache_key(config_name: str, question: str, variant: dict | None = None) -> 
 
 
 def _generate_one(
-    label: str,
     config_name: str,
     question: str,
     generate: Generator,
@@ -105,8 +107,12 @@ def _generate_one(
 ) -> dict:
     """Generate one answer. `read_cache` gates *reading* the cache; the result is
     always written back, so `--no-cache` refreshes stale entries (e.g. after a
-    prompt/parser change) instead of leaving them behind."""
-    cache_path = cache_dir / label / f"{_cache_key(config_name, question, variant)}.json"
+    prompt/parser change) instead of leaving them behind.
+
+    The cache is namespaced by config_name (not label) and keyed by variant, so
+    repeated runs of the same config (the M5 3x variance runs) share the cached
+    generation while writing to distinct result files."""
+    cache_path = cache_dir / config_name / f"{_cache_key(config_name, question, variant)}.json"
     if read_cache and cache_path.exists():
         cached: dict = json.loads(cache_path.read_text(encoding="utf-8"))
         return cached
@@ -203,7 +209,7 @@ def run_config(
         outputs = list(
             pool.map(
                 lambda ex: _generate_one(
-                    label, config_name, ex.question, generate, use_cache, variant, cache_dir
+                    config_name, ex.question, generate, use_cache, variant, cache_dir
                 ),
                 examples,
             )

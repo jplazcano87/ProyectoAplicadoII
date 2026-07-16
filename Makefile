@@ -1,4 +1,12 @@
-.PHONY: install ingest index demo eval validate-golden test lint
+.PHONY: install ingest index demo eval experiments validate-golden test lint
+
+# Full M5 suite: A/B/C x3 (mean±std) + ablations + top-k sweep + report + errors.
+# Override DATASET / RUNS as needed, e.g.: make experiments RUNS=3
+RUNS ?= 3
+
+experiments:
+	uv run python scripts/run_experiments.py --dataset $(DATASET) --runs $(RUNS)
+	uv run python scripts/error_analysis.py
 
 # Dataset used by `make eval` / `make validate-golden`. Override for the real
 # golden set, e.g.: make eval DATASET=data/golden/golden_dataset.jsonl
