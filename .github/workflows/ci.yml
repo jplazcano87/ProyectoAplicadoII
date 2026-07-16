@@ -36,3 +36,9 @@ jobs:
 
       - name: Pytest
         run: uv run pytest
+
+      # Runs last so lint/tests report first. Fails while the golden has
+      # references that don't exist in the corpus (the forcing function to fix
+      # them via scripts/report_gold_invalid.py -> results/gold_to_fix.md).
+      - name: Validate golden dataset (schema + reference existence)
+        run: uv run python scripts/validate_golden.py data/golden/golden_dataset.jsonl

@@ -41,13 +41,23 @@ def validate_file(dataset: Path, chunks_path: Path = CHUNKS_PATH) -> int:
         print(f"ERROR: dataset not found: {dataset}")
         return 1
 
+    # Prefer the full corpus; fall back to the committed reference-key list so
+    # CI (which has no chunks.jsonl) can still check reference existence.
+    refs_file = chunks_path.parent / "corpus_refs.txt"
     known: set[tuple[str, str]] = set()
     if chunks_path.exists():
         known = known_reference_keys(load_chunks(chunks_path))
+    elif refs_file.exists():
+        known = {
+            tuple(line.split("::", 1))  # type: ignore[misc]
+            for line in refs_file.read_text(encoding="utf-8").splitlines()
+            if "::" in line
+        }
+        print(f"Using committed reference keys from {refs_file} ({len(known)} refs).\n")
     else:
         print(
-            f"WARNING: {chunks_path} not found; skipping reference-existence checks "
-            "(run `make ingest` to enable them).\n"
+            f"WARNING: neither {chunks_path} nor {refs_file} found; skipping "
+            "reference-existence checks (run `make ingest`).\n"
         )
 
     seen_ids: dict[str, int] = {}

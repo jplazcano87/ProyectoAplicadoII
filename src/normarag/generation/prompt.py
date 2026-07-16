@@ -104,6 +104,71 @@ def build_citation_prompt(question: str, context_chunks: list[dict]) -> str:
     return f"CONTEXTO:\n{context}\n\nPREGUNTA:\n{question}\n\n{_CITATION_CONTRACT}"
 
 
+# C-v2 (M6): softer abstention to counter the over-abstention diagnosed in M5.
+# Still requires citing chapter/numeral, but only abstains when the context is
+# clearly off-topic — not merely "insufficient".
+SOFT_CITATION_SYSTEM_PROMPT = (
+    "Eres NormaRAG, un asistente experto en la normativa bancaria chilena (RAN de la CMF). "
+    "Reglas:\n"
+    "1. Responde con base en el CONTEXTO entregado, citando capítulo y numeral.\n"
+    "2. Si el contexto es parcial pero relevante, RESPONDE con lo que sí sustenta el "
+    "contexto (no te abstengas por no tener todo el detalle).\n"
+    "3. Abstente SOLO si el contexto no trata en absoluto el tema de la pregunta.\n"
+    "4. No inventes capítulos ni numerales que no estén en el contexto."
+)
+
+_SOFT_CITATION_CONTRACT = (
+    "Responde EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional ni Markdown:\n"
+    '{"answer": "<respuesta en español, o \\"No puedo responder con la normativa '
+    'disponible\\" solo si el contexto es irrelevante>", '
+    '"citations": [{"chapter": "<codigo_capitulo>", "numeral": "<numeral>"}], '
+    '"abstained": <true|false>}\n'
+    "Reglas de citación:\n"
+    "- En 'chapter' usa SOLO el código (p. ej. '1-13'), sin la palabra 'Capítulo'.\n"
+    "- No cites numerales que no aparezcan en el contexto.\n"
+    "- Abstente (abstained=true, citations=[]) únicamente si el contexto no trata el tema."
+)
+
+
+def build_soft_citation_prompt(question: str, context_chunks: list[dict]) -> str:
+    """Softer citation prompt (C-v2): reduces over-abstention."""
+    context = format_context(context_chunks) if context_chunks else "(sin contexto recuperado)"
+    return f"CONTEXTO:\n{context}\n\nPREGUNTA:\n{question}\n\n{_SOFT_CITATION_CONTRACT}"
+
+
+DECOMPOSE_SYSTEM_PROMPT = (
+    "Eres un planificador de consultas sobre normativa bancaria chilena (RAN de la CMF). "
+    "Descompones una pregunta en las sub-preguntas atómicas mínimas necesarias para "
+    "responderla con la normativa. Si la pregunta ya es atómica, devuélvela tal cual."
+)
+
+_DECOMPOSE_CONTRACT = (
+    "Responde SOLO con un objeto JSON válido, sin texto adicional:\n"
+    '{"sub_questions": ["<sub-pregunta 1>", "<sub-pregunta 2>", ...]}\n'
+    "Reglas: entre 1 y 3 sub-preguntas; si la pregunta es simple, devuelve una sola "
+    "(la original). No inventes sub-preguntas irrelevantes."
+)
+
+
+def build_decompose_prompt(question: str) -> str:
+    """Prompt to split a complex question into atomic sub-questions (config D)."""
+    return f"PREGUNTA:\n{question}\n\n{_DECOMPOSE_CONTRACT}"
+
+
+def parse_sub_questions(raw: str, fallback: str) -> list[str]:
+    """Parse the decomposer's JSON; fall back to the original question."""
+    match = _JSON_OBJECT_RE.search(raw or "")
+    if match:
+        try:
+            data = json.loads(match.group(0))
+            subs = [str(s).strip() for s in data.get("sub_questions", []) if str(s).strip()]
+            if subs:
+                return subs[:3]
+        except json.JSONDecodeError:
+            pass
+    return [fallback]
+
+
 def build_baseline_prompt(question: str) -> str:
     """Build the prompt for the A baseline (LLM only, no retrieval)."""
     return (

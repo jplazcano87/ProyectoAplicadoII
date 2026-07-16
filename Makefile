@@ -1,4 +1,4 @@
-.PHONY: install ingest index demo eval experiments validate-golden test lint
+.PHONY: install ingest index demo eval experiments validate-golden gold-report test lint
 
 # Full M5 suite: A/B/C x3 (mean±std) + ablations + top-k sweep + report + errors.
 # Override DATASET / RUNS as needed, e.g.: make experiments RUNS=3
@@ -19,9 +19,14 @@ install:
 ingest:
 	uv run python -m normarag.corpus.download
 	uv run python -m normarag.corpus.chunk
+	uv run python -m normarag.corpus.refs   # committed (chapter, numeral) keys for CI
 
 index:
 	uv run python -m normarag.index.store
+
+# Report golden references missing from the corpus -> results/gold_to_fix.md
+gold-report:
+	uv run python scripts/report_gold_invalid.py --golden $(DATASET)
 
 demo:
 	docker compose up --build

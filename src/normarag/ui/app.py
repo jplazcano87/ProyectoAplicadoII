@@ -18,6 +18,7 @@ CONFIG_LABELS = {
     "A · baseline (LLM solo)": "A",
     "B · RAG naive (denso)": "B",
     "C · RAG mejorado (híbrido + rerank)": "C",
+    "D · agéntico (sub-preguntas + self-check)": "D",
 }
 
 st.set_page_config(page_title="NormaRAG", page_icon="⚖️")
@@ -60,11 +61,25 @@ if st.button("Consultar", type="primary") and question.strip():
     if data.get("cost_usd") is not None:
         cols[2].metric("Costo", f"${data['cost_usd']:.5f}")
 
+    # Config D: show the agent's sub-questions and the self-check rejections.
+    sub_questions = data.get("sub_questions", [])
+    if sub_questions and config == "D":
+        st.subheader("Sub-preguntas del agente")
+        for i, sq in enumerate(sub_questions, start=1):
+            st.markdown(f"{i}. {sq}")
+
     if data.get("abstained"):
         st.warning("El sistema se abstuvo: no hay evidencia suficiente en el corpus.")
     else:
         st.subheader("Respuesta")
         st.write(data.get("answer", ""))
+
+    rejected = data.get("rejected_citations", [])
+    if rejected:
+        st.caption(
+            "🛡️ Self-check descartó citas inexistentes en el corpus: "
+            + ", ".join(f"{c.get('chapter')}·{c.get('numeral')}" for c in rejected)
+        )
 
     citations = data.get("citations", [])
     if citations:
