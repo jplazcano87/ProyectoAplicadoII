@@ -63,21 +63,30 @@ def _write_meta(dataset: Path, n_runs: int) -> None:
     (RESULTS_DIR / "experiment_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
-def run_experiments(dataset: str, runs: int, skip_ragas: bool, workers: int) -> None:
+def run_experiments(
+    dataset: str, runs: int, skip_ragas: bool, workers: int, resume: bool = False
+) -> None:
     ds = Path(dataset)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     _write_meta(ds, runs)
 
     common = {"use_cache": True, "skip_ragas": skip_ragas}
 
+    def _run(config: str, *, label: str, results_dir: Path, **kw) -> None:
+        # Resume: skip a pass whose result file already exists (RAGAS is not
+        # cached, so this avoids re-judging completed passes after a restart).
+        if resume and (results_dir / f"{label}.jsonl").exists():
+            print(f"[{label}] resume: already done, skipping.", flush=True)
+            return
+        run_config(config, ds, label=label, results_dir=results_dir, **kw)
+
     # 1. Main A/B/C, N runs each (generation shared via cache; RAGAS re-runs).
     print(f"\n===== 1. MAIN A/B/C ({runs} runs) =====", flush=True)
     for config in ("baseline", "rag_naive", "rag_improved"):
         w = 1 if config == "rag_improved" else workers
         for i in range(1, runs + 1):
-            run_config(
+            _run(
                 config,
-                ds,
                 label=f"{config}__run{i}",
                 results_dir=RESULTS_DIR / "main",
                 max_workers=w,
@@ -93,9 +102,8 @@ def run_experiments(dataset: str, runs: int, skip_ragas: bool, workers: int) -> 
         "C_naiveprompt": {"use_citation_prompt": False},
     }
     for label, variant in ablations.items():
-        run_config(
+        _run(
             "rag_improved",
-            ds,
             label=label,
             variant=variant or None,
             results_dir=RESULTS_DIR / "ablations",
@@ -106,9 +114,8 @@ def run_experiments(dataset: str, runs: int, skip_ragas: bool, workers: int) -> 
     # 3. Top-k sweep (top_k_rerank), everything else fixed at the C defaults.
     print("\n===== 3. TOP-K SWEEP =====", flush=True)
     for k in TOPK_VALUES:
-        run_config(
+        _run(
             "rag_improved",
-            ds,
             label=f"C_k{k}",
             variant={"top_k_rerank": k},
             results_dir=RESULTS_DIR / "topk",
@@ -127,8 +134,11 @@ def main() -> None:
     parser.add_argument("--runs", type=int, default=3, help="Variance runs for the A/B/C table.")
     parser.add_argument("--skip-ragas", action="store_true")
     parser.add_argument("--max-workers", type=int, default=3)
+    parser.add_argument(
+        "--resume", action="store_true", help="Skip passes whose result file already exists."
+    )
     args = parser.parse_args()
-    run_experiments(args.dataset, args.runs, args.skip_ragas, args.max_workers)
+    run_experiments(args.dataset, args.runs, args.skip_ragas, args.max_workers, args.resume)
 
 
 if __name__ == "__main__":
