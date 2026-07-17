@@ -29,7 +29,7 @@ RESULTS_DIR = Path("results")
 CACHE_DIR = Path(".cache/eval")
 
 Generator = Callable[[str], dict]
-CONFIGS = ("baseline", "rag_naive", "rag_improved")
+CONFIGS = ("baseline", "rag_naive", "rag_improved", "agentic")
 
 
 def build_generator(
@@ -39,12 +39,15 @@ def build_generator(
     use_rerank: bool | None = None,
     use_citation_prompt: bool | None = None,
     top_k_rerank: int | None = None,
+    soft_abstention: bool | None = None,
+    exclude_preamble: bool | None = None,
+    use_decompose: bool | None = None,
 ) -> Generator:
     """Construct the real (OpenAI/Qdrant/Cohere-backed) generator for a config.
 
-    For rag_improved the three toggles and top_k_rerank override the settings
-    defaults, so M5 ablations and the top-k sweep run from the CLI without new
-    logic.
+    For rag_improved the flags override the settings defaults, so M5 ablations,
+    the top-k sweep and the M6 C-v2 interventions run from the CLI without new
+    logic. `agentic` is config D.
     """
     from normarag.generation.llm import OpenAIClient
 
@@ -78,7 +81,25 @@ def build_generator(
             use_rerank=ur,
             use_citation_prompt=uc,
             top_k_rerank=top_k_rerank,
+            soft_abstention=soft_abstention,
+            exclude_preamble=exclude_preamble,
         )
+    if config_name == "agentic":
+        from normarag.eval.metrics import known_citation_keys
+        from normarag.index.store import load_chunks
+        from normarag.pipeline.agentic import Agent
+        from normarag.retrieval.rerank import CohereReranker
+        from normarag.retrieval.retriever import Retriever
+
+        agent = Agent(
+            llm=llm,
+            retriever=Retriever(),
+            reranker=CohereReranker(),
+            known_keys=known_citation_keys(load_chunks()),
+            top_k_rerank=top_k_rerank,
+            use_decompose=True if use_decompose is None else use_decompose,
+        )
+        return agent.run
     raise ValueError(f"Unknown config '{config_name}'. Choices: {CONFIGS}")
 
 
@@ -138,7 +159,7 @@ def _build_row(
     config_name: str, example: GoldenExample, output: dict, known: set[tuple[str, str]]
 ) -> dict:
     metrics = per_example_metrics(output, example, known)
-    return {
+    row = {
         "id": example.id,
         "config": config_name,
         "question": example.question,
@@ -155,6 +176,12 @@ def _build_row(
         "cost_usd": output.get("cost_usd"),
         **metrics,
     }
+    # Config D (agentic) extras, when present.
+    if "sub_questions" in output:
+        row["sub_questions"] = output["sub_questions"]
+    if output.get("rejected_citations"):
+        row["rejected_citations"] = output["rejected_citations"]
+    return row
 
 
 def _attach_ragas(rows: list[dict], examples: list[GoldenExample]) -> None:
@@ -244,6 +271,10 @@ def main() -> None:
     parser.add_argument("--hybrid", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--rerank", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--citation-prompt", action=argparse.BooleanOptionalAction, default=None)
+    # M6 C-v2 interventions.
+    parser.add_argument("--soft-abstention", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--exclude-preamble", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--top-k-rerank", type=int, default=None)
     args = parser.parse_args()
 
     variant: dict = {}
@@ -253,6 +284,12 @@ def main() -> None:
         variant["use_rerank"] = args.rerank
     if args.citation_prompt is not None:
         variant["use_citation_prompt"] = args.citation_prompt
+    if args.soft_abstention is not None:
+        variant["soft_abstention"] = args.soft_abstention
+    if args.exclude_preamble is not None:
+        variant["exclude_preamble"] = args.exclude_preamble
+    if args.top_k_rerank is not None:
+        variant["top_k_rerank"] = args.top_k_rerank
 
     run_config(
         args.config,

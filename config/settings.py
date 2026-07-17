@@ -48,5 +48,10 @@ class Settings(BaseSettings):
     use_rerank: bool = True  # Cohere rerank over fused candidates
     use_citation_prompt: bool = True  # strict citation+abstention prompt vs naive
 
+    # C-v2 interventions (M6): each targets a root cause found in M5, off by
+    # default so config C stays exactly as evaluated in M5.
+    soft_abstention: bool = False  # softer prompt to reduce over-abstention
+    exclude_preamble: bool = False  # drop preamble chunks (numeral "0") before rerank
+
 
 settings = Settings()

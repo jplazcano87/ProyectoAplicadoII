@@ -123,13 +123,14 @@ La UI queda disponible en `http://localhost:8501` y la API en `http://localhost:
 
 ### Configuraciones
 
-| Config | Recuperación | Prompt |
+| Config | Recuperación | Prompt / lógica |
 |---|---|---|
 | **A** baseline | ninguna (LLM solo) | — |
 | **B** rag_naive | densa top-k | citación básica |
 | **C** rag_improved | híbrida (densa + BM25, fusión RRF) + rerank Cohere | citación obligatoria + abstención |
+| **D** agentic | por sub-pregunta (híbrida + rerank) | descompone → sintetiza → **self-check** de citas (LangGraph) |
 
-Cada mejora de C es un **toggle independiente** (`USE_HYBRID`, `USE_RERANK`, `USE_CITATION_PROMPT`) para medir su aporte incremental en ablations.
+Cada mejora de C es un **toggle independiente** (`USE_HYBRID`, `USE_RERANK`, `USE_CITATION_PROMPT`) para ablations. **C-v2** (M6) añade dos flags que atacan las causas raíz halladas en M5: `SOFT_ABSTENTION` (menos sobre-abstención) y `EXCLUDE_PREAMBLE` (excluye chunks de preámbulo `numeral 0` del rerank), + `top_k_rerank=10`.
 
 ### Consultar la API
 
@@ -182,6 +183,23 @@ Salidas en `results/`: `comparativa.csv`, `comparativa.md` y `comparativa.png` c
 Para correr sobre **tu golden dataset real**, ver la guía completa **[Reproducir todo de cero](#reproducir-todo-de-cero-con-tu-golden-dataset-paso-a-paso)** (colócalo en `data/golden/golden_dataset.jsonl` y usa `make eval DATASET=…`).
 
 El **golden dataset real (60–80 Q&A)** es trabajo humano (requiere criterio normativo y validar cada referencia). El repo incluye `data/golden/seed.jsonl` (12 ejemplos semilla derivados de chunks reales) solo para ejercitar el harness.
+
+### Cierre M6 (agéntico D, C-v2 y validez del instrumento)
+
+```bash
+# 1) Referencias del golden que NO existen en el corpus -> checklist a corregir a mano
+make gold-report DATASET=data/golden/golden_dataset.jsonl   # -> results/gold_to_fix.md
+
+# 2) Config D (agéntico) y C-v2 en el harness (mismo contrato que A/B/C)
+uv run python -m normarag.eval.runner --config agentic      --dataset data/golden/golden_dataset.jsonl --max-workers 1
+uv run python -m normarag.eval.runner --config rag_improved --dataset data/golden/golden_dataset.jsonl \
+  --label C_v2 --soft-abstention --exclude-preamble --max-workers 1   # + top_k_rerank=10 vía env/variant
+
+# 3) Re-juez independiente (gpt-4o) reusando la generación cacheada, resumible por lotes
+JUDGE_MODEL=gpt-4o uv run python scripts/rejudge_ragas.py results/main/*.jsonl --batch 10
+```
+
+> **C-v2 se reporta como experimento SEPARADO** ("validación de hipótesis post-M5"): no sobrescribe los resultados de M5. La narrativa es observar → diagnosticar → intervenir sobre la causa → medir.
 
 ### Tests y linting
 

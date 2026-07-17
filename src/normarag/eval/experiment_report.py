@@ -25,11 +25,12 @@ from normarag.eval.report import _fmt, aggregate
 
 RESULTS_DIR = Path("results")
 
-CONFIG_ORDER = ["baseline", "rag_naive", "rag_improved"]
+CONFIG_ORDER = ["baseline", "rag_naive", "rag_improved", "agentic"]
 CONFIG_LABEL = {
     "baseline": "A · baseline",
     "rag_naive": "B · RAG naive",
     "rag_improved": "C · RAG improved",
+    "agentic": "D · agentic",
 }
 
 METRIC_ROWS = [

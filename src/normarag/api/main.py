@@ -11,8 +11,20 @@ from normarag.pipeline.rag_naive import run_rag_naive
 
 app = FastAPI(title="NormaRAG", version="0.1.0")
 
-# A = baseline (LLM only), B = RAG naive (dense), C = RAG improved (hybrid+rerank).
-CONFIGS = {"A": run_baseline, "B": run_rag_naive, "C": run_rag_improved}
+# A=baseline, B=RAG naive (dense), C=RAG improved (hybrid+rerank), D=agentic.
+# Each closure adapts the per-config signature (top_k where it applies).
+CONFIGS = {
+    "A": lambda q, top_k: run_baseline(q),
+    "B": lambda q, top_k: run_rag_naive(q, top_k=top_k),
+    "C": lambda q, top_k: run_rag_improved(q, top_k_rerank=top_k),
+    "D": lambda q, top_k: _run_agentic(q, top_k),
+}
+
+
+def _run_agentic(question: str, top_k: int | None) -> dict:
+    from normarag.pipeline.agentic import run_agentic
+
+    return run_agentic(question, top_k_rerank=top_k)
 
 
 class Citation(BaseModel):
@@ -34,7 +46,7 @@ class Source(BaseModel):
 
 class QueryRequest(BaseModel):
     question: str
-    config: str = "C"  # A | B | C
+    config: str = "C"  # A | B | C | D
     top_k: int | None = None
 
 
@@ -46,6 +58,8 @@ class QueryResponse(BaseModel):
     latency_ms: float | None = None
     cost_usd: float | None = None
     sources: list[Source]
+    sub_questions: list[str] = []  # config D
+    rejected_citations: list[Citation] = []  # config D self-check
 
 
 @app.get("/health")
@@ -73,14 +87,10 @@ def query(payload: QueryRequest) -> QueryResponse:
         raise HTTPException(status_code=422, detail="question must not be empty")
     run = CONFIGS.get(payload.config)
     if run is None:
-        raise HTTPException(status_code=422, detail=f"unknown config '{payload.config}' (A|B|C)")
+        raise HTTPException(status_code=422, detail=f"unknown config '{payload.config}' (A|B|C|D)")
 
-    # top_k is an exploration tool exposed only for retrieval configs.
-    result = (
-        run(payload.question)
-        if payload.config == "A"
-        else run(payload.question, top_k=payload.top_k)
-    )
+    # top_k is an exploration tool for retrieval configs (ignored by A).
+    result = run(payload.question, payload.top_k)
     return QueryResponse(
         answer=result["answer"],
         citations=[Citation(**c) for c in result["citations"]],
@@ -89,4 +99,6 @@ def query(payload: QueryRequest) -> QueryResponse:
         latency_ms=result.get("latency_ms"),
         cost_usd=result.get("cost_usd"),
         sources=[_source(c) for c in result["contexts"]],
+        sub_questions=result.get("sub_questions", []),
+        rejected_citations=[Citation(**c) for c in result.get("rejected_citations", [])],
     )
