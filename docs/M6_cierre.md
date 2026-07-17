@@ -62,6 +62,28 @@ Sobre las **12 preguntas que fallaron en M5** (citation_invalid + abstention_fai
 
 > El veredicto A/B/C/D + C-v2 **definitivo** requiere el golden corregido (item pendiente del humano vía `gold_to_fix.md`) y, para RAGAS limpio, la re-corrida con gpt-4o. Este subconjunto solo demuestra que las intervenciones atacan la causa correcta.
 
+## Tabla consolidada — golden CORREGIDO (70 preguntas)
+
+Comparación completa A/B/C/D + C-v2 sobre el golden ya corregido (8 refs inválidas arregladas). **Métricas programáticas** (RAGAS omitido por el rate limit de la cuenta; se puede añadir con `scripts/rejudge_ragas.py`). Esto **no sobrescribe** la evaluación M5 (golden original) — es el cierre M6.
+
+| Config | cita exact F1 | cita chapter F1 | validez | abstención F1 | sobre-abstenciones | citation_invalid | latencia |
+|---|---|---|---|---|---|---|---|
+| A · baseline | 0.143 | 0.157 | 0.314 | 0.625 | 12 | 48 | 1.5 s |
+| **B · naive** | **0.749** | **0.905** | 0.986 | 0.800 | 2 | 1 | 4.9 s |
+| C · improved | 0.614 | 0.814 | 0.943 | 0.621 | 10 | 4 | 6.6 s |
+| **C-v2** | 0.702 | 0.857 | 0.957 | **0.818** | 3 | 3 | 6.4 s |
+| **D · agéntico** | 0.605 | 0.686 | **1.000** | 0.606 | 13 | **0** | 15.1 s |
+
+> Referencia M5 (golden **original**, con 8 gold_invalid): A 0.14 · B 0.68 · C 0.56 en cita exact F1. Corregir el golden subió a todos (menos penalización por refs inexistentes), pero **la conclusión se mantiene**.
+
+### Lectura honesta
+
+1. **B (RAG naive) sigue ganando** en citación exact/chapter F1 (0.749). El hallazgo negativo de M5 es **robusto**: se sostiene con datos limpios.
+2. **C-v2 valida el diagnóstico de M5 a escala:** recupera gran parte del déficit de C — cita exact F1 **0.614 → 0.702**, abstención F1 **0.621 → 0.818** (la **mejor** de todas, incluso sobre B), sobre-abstenciones **10 → 3**. Confirma que las causas raíz eran el prompt estricto (sobre-abstención) y los preámbulos en el rerank. Aún así no supera a B en cita exacta.
+3. **D (agéntico) elimina `citation_invalid` a 0** (validez 1.000) — su objetivo de diseño: el self-check rechazó **6 citas** inventadas. Pero es un **guardarraíl, no un potenciador de calidad**: no mejora la cita exacta sobre C, aumenta la sobre-abstención (13) y cuesta 2.5× de latencia. Descompone en media 2.3 sub-preguntas.
+
+**Conclusión de la PoC:** la evaluación honesta muestra que el RAG naive es un baseline difícil de superar en este dominio; las mejoras "sofisticadas" (híbrido, rerank, prompt estricto, agente) o no ayudan o intercambian una métrica por otra. La contribución real es **metodológica**: un instrumento de evaluación que detecta esto, diagnostica la causa (M5) y verifica la intervención (C-v2 confirma; D garantiza validez de citas). Un hallazgo negativo bien medido > un número inflado.
+
 ## Estado y cierre
 
 - **Config D** corre en el harness/API/UI con self-check de citas.
