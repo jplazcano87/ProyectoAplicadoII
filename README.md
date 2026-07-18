@@ -46,10 +46,10 @@ cp .env.example .env      # completa OPENAI_API_KEY y CO_API_KEY (o COHERE_API_K
 make install
 ```
 
-### Paso 2 — Levantar Qdrant
+### Paso 2 — Levantar Qdrant (prerrequisito de index/eval)
 
 ```bash
-docker compose up -d qdrant
+make qdrant   # docker compose up -d qdrant  (requiere Docker abierto)
 ```
 
 ### Paso 3 — Construir el corpus (descarga CMF → parse → chunk)
@@ -101,11 +101,18 @@ make demo                 # Qdrant + API + UI ; UI en http://localhost:8501
 
 ## Uso
 
+> ⚠️ **Prerrequisito: Qdrant debe estar corriendo** para `make index`, `make eval`, `make experiments`, `scripts/error_analysis.py` y las consultas de la API/UI. Si `make index` falla con `Connection refused` / `[Errno 61]`, es que Qdrant está caído. Levántalo con:
+> ```bash
+> make qdrant           # equivale a: docker compose up -d qdrant
+> ```
+> (Requiere Docker Desktop abierto. Verifica con `curl -sf http://localhost:6333/readyz`.)
+
 ### Ingesta del corpus RAN
 
 ```bash
-make ingest   # descarga PDFs, parsea, chunkea -> data/processed/chunks.jsonl
-make index    # genera embeddings y pobla Qdrant
+make qdrant   # 1) levanta Qdrant (prerrequisito)
+make ingest   # 2) descarga PDFs, parsea, chunkea -> data/processed/chunks.jsonl
+make index    # 3) genera embeddings y pobla Qdrant
 ```
 
 ### Demo local
