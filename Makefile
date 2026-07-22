@@ -1,4 +1,4 @@
-.PHONY: install ingest index demo eval experiments validate-golden gold-report test lint
+.PHONY: install ingest index demo eval experiments validate-golden gold-report qdrant test lint
 
 # Full M5 suite: A/B/C x3 (mean±std) + ablations + top-k sweep + report + errors.
 # Override DATASET / RUNS as needed, e.g.: make experiments RUNS=3
@@ -20,6 +20,10 @@ ingest:
 	uv run python -m normarag.corpus.download
 	uv run python -m normarag.corpus.chunk
 	uv run python -m normarag.corpus.refs   # committed (chapter, numeral) keys for CI
+
+# Levanta solo Qdrant (prerrequisito de index / eval / experiments / consultas)
+qdrant:
+	docker compose up -d qdrant
 
 index:
 	uv run python -m normarag.index.store

@@ -46,10 +46,10 @@ cp .env.example .env      # completa OPENAI_API_KEY y CO_API_KEY (o COHERE_API_K
 make install
 ```
 
-### Paso 2 — Levantar Qdrant
+### Paso 2 — Levantar Qdrant (prerrequisito de index/eval)
 
 ```bash
-docker compose up -d qdrant
+make qdrant   # docker compose up -d qdrant  (requiere Docker abierto)
 ```
 
 ### Paso 3 — Construir el corpus (descarga CMF → parse → chunk)
@@ -101,11 +101,18 @@ make demo                 # Qdrant + API + UI ; UI en http://localhost:8501
 
 ## Uso
 
+> ⚠️ **Prerrequisito: Qdrant debe estar corriendo** para `make index`, `make eval`, `make experiments`, `scripts/error_analysis.py` y las consultas de la API/UI. Si `make index` falla con `Connection refused` / `[Errno 61]`, es que Qdrant está caído. Levántalo con:
+> ```bash
+> make qdrant           # equivale a: docker compose up -d qdrant
+> ```
+> (Requiere Docker Desktop abierto. Verifica con `curl -sf http://localhost:6333/readyz`.)
+
 ### Ingesta del corpus RAN
 
 ```bash
-make ingest   # descarga PDFs, parsea, chunkea -> data/processed/chunks.jsonl
-make index    # genera embeddings y pobla Qdrant
+make qdrant   # 1) levanta Qdrant (prerrequisito)
+make ingest   # 2) descarga PDFs, parsea, chunkea -> data/processed/chunks.jsonl
+make index    # 3) genera embeddings y pobla Qdrant
 ```
 
 ### Demo local
@@ -214,11 +221,20 @@ make lint
 Pregunta → Retriever (denso + BM25) → Reranker (Cohere) → LLM (GPT-4o-mini) → Respuesta + citas
 ```
 
-Tres configuraciones comparadas:
+Configuraciones comparadas:
 - **A** — LLM solo (baseline)
 - **B** — RAG naive (chunking fijo + top-k denso)
 - **C** — RAG mejorado (híbrido + rerank + prompt de citación)
 - **D** — Agéntico (LangGraph, sub-preguntas + verificación de citas)
+- **C-v2** — C con intervenciones sobre las causas raíz halladas en M5
+
+## Resultados y conclusiones
+
+- **[docs/CONCLUSIONES.md](docs/CONCLUSIONES.md)** — resumen ejecutivo listo para informe (qué se construyó, hallazgos, contribución, limitaciones, trabajo futuro).
+- [docs/M5_experimentos.md](docs/M5_experimentos.md) — experimentos A/B/C, ablations, análisis de errores.
+- [docs/M6_cierre.md](docs/M6_cierre.md) — capa agéntica, C-v2 y tabla consolidada.
+
+**Hallazgo central (honesto):** el RAG naive (B) es un baseline fuerte que las mejoras "sofisticadas" no superan en citación; C-v2 valida el diagnóstico (recupera la sobre-abstención) y D garantiza validez de citas vía self-check. La contribución real es el **instrumento de evaluación** que lo mide con rigor.
 
 ## Estructura del repositorio
 
@@ -240,3 +256,36 @@ Ver `.env.example` para la lista completa. Claves:
 - `OPENAI_API_KEY` — embeddings, generador y juez RAGAS (requerida).
 - `CO_API_KEY` **o** `COHERE_API_KEY` — reranking de la config C (basta una).
 - `ANTHROPIC_API_KEY` — opcional, solo si usas Claude como juez.
+
+## Experimentar con configuraciones
+
+Todo se ajusta por **variables de entorno** (`.env`), sin tocar código. Lo importante es **qué exige re-procesar**:
+
+| Qué cambias | Variable(s) | ¿Requiere? |
+|---|---|---|
+| **Modelo generador** (más caro/mejor) | `GENERATOR_MODEL` (p. ej. `gpt-4o`, `gpt-4.1`) | nada — efecto inmediato. Borra `.cache/eval/` para regenerar respuestas |
+| **Modelo juez RAGAS** | `JUDGE_MODEL` (p. ej. `gpt-4o`) | nada — re-juzga con `scripts/rejudge_ragas.py` (reusa generación) |
+| **Modelo de embeddings** | `EMBEDDING_MODEL` + `EMBEDDING_DIM` | **re-indexar** (`make index`); la dim DEBE coincidir (3-large=3072, 3-small=1536) |
+| **Reranker** | `RERANK_MODEL` | nada — efecto inmediato |
+| **Tamaño de chunk** | `CHUNK_MAX_TOKENS`, `CHUNK_OVERLAP_RATIO` | **re-chunkear + re-indexar** (`make ingest && make index`) |
+| **Top-k de recuperación** | `TOP_K_DENSE`, `TOP_K_SPARSE`, `TOP_K_RERANK`, `RRF_K` | nada — efecto inmediato en consulta/eval |
+
+**Ejemplos:**
+
+```bash
+# Generador más caro (mejor calidad, más costo). Borra la caché para regenerar.
+echo "GENERATOR_MODEL=gpt-4o" >> .env
+rm -rf .cache/eval
+make eval DATASET=data/golden/golden_dataset.jsonl
+
+# Probar chunks más chicos (más granular) o más grandes (más contexto por chunk)
+echo "CHUNK_MAX_TOKENS=400" >> .env    # o 1200
+make ingest && make index             # re-chunkea y re-indexa
+make eval DATASET=data/golden/golden_dataset.jsonl
+
+# Cambiar el modelo de embeddings (¡ajusta también la dimensión!)
+printf "EMBEDDING_MODEL=text-embedding-3-small\nEMBEDDING_DIM=1536\n" >> .env
+make index                            # re-indexa con la nueva dim
+```
+
+> **Costo/caché:** la generación se cachea por `(config, modelo, pregunta)`. Al cambiar de generador o chunking, borra `.cache/eval/` (o usa `--no-cache`) para forzar la regeneración; los embeddings se cachean por `(modelo, texto)` en `.cache/embeddings/`. El juez RAGAS nunca se cachea (se re-paga siempre).

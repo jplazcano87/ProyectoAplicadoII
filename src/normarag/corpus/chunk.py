@@ -25,14 +25,16 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import tiktoken
+from config.settings import settings
 
 from normarag.corpus.parse import ParsedChapter, parse_corpus
 
 PROCESSED_DIR = Path("data/processed")
 CHUNKS_PATH = PROCESSED_DIR / "chunks.jsonl"
 
-MAX_TOKENS = 800
-OVERLAP_RATIO = 0.15
+# Tunable via env (CHUNK_MAX_TOKENS / CHUNK_OVERLAP_RATIO); re-run make ingest+index.
+MAX_TOKENS = settings.chunk_max_tokens
+OVERLAP_RATIO = settings.chunk_overlap_ratio
 
 _ENCODER = tiktoken.get_encoding("cl100k_base")
 

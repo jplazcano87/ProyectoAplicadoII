@@ -12,10 +12,14 @@ class Settings(BaseSettings):
 
     # Models
     embedding_model: str = "text-embedding-3-large"
-    embedding_dim: int = 3072  # text-embedding-3-large native dimension
+    embedding_dim: int = 3072  # MUST match the embedding model (3-large=3072, 3-small=1536)
     generator_model: str = "gpt-4o-mini"
     judge_model: str = "gpt-4o"
     rerank_model: str = "rerank-multilingual-v3.0"
+
+    # Chunking (M1). Cambiar requiere re-chunkear e indexar: `make ingest && make index`.
+    chunk_max_tokens: int = 800  # tamaño máximo de un chunk antes de subdividir
+    chunk_overlap_ratio: float = 0.15  # solapamiento entre sub-chunks largos
 
     # RAGAS reliability: prioritize completing over speed. The judge (gpt-4o) has
     # a tokens-per-minute (TPM) cap, so serialize calls (workers=1) to spread
